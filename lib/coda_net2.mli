@@ -13,7 +13,7 @@ module Keypair : sig
   type t
 
   (** Securely generate a new keypair. *)
-  val random : unit -> t
+  val random : unit -> t Deferred.Or_error.t
 
   val id : t -> peer_id
 end
@@ -76,15 +76,15 @@ val create :
   -> t Deferred.Or_error.t
 
 (** List of all peers we know about. *)
-val peers : t -> Network_peer.Peer.t list Deferred.t
+val peers : t -> Peer.t list Deferred.t
 
 (** Randomly pick a few peers from all the ones we know about. *)
-val random_peers : t -> int -> Network_peer.Peer.t list Deferred.t
+val random_peers : t -> int -> Peer.t list Deferred.t
 
 (** Perform Jane Street RPC with a given peer *)
 val rpc_peer :
      t
-  -> Network_peer.Peer.t
+  -> Peer.t
   -> (Versioned_rpc.Connection_with_menu.t -> 'q -> 'r Deferred.Or_error.t)
   -> 'q
   -> 'r Deferred.Or_error.t

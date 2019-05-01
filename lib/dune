@@ -1,4 +1,11 @@
 (library
  (name coda_net2)
- (libraries core async)
- (preprocess (pps ppx_jane)))
+ (modules envelope helper linear_pipe peer strict_pipe coda_net2 b58)
+ (libraries core async yojson callipyge digestif.ocaml)
+ (preprocess (pps ppx_jane ppx_let)))
+
+(executable
+ (name test_client)
+ (modules test_client)
+ (preprocess (pps ppx_jane ppx_let))
+ (libraries coda_net2 core async ))

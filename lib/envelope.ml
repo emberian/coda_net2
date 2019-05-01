@@ -7,7 +7,6 @@ module Sender = struct
       end
 
       include T
-      include Registration.Make_latest_version (T)
     end
 
     module Latest = V1
@@ -18,8 +17,6 @@ module Sender = struct
       type latest = Latest.t
     end
 
-    module Registrar = Registration.Make (Module_decl)
-    module Registered_V1 = Registrar.Register (V1)
   end
 
   (* bin_io intentionally omitted in deriving list *)

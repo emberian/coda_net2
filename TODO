@@ -1,0 +1,4 @@
+- Hash go.mod, have CI check that the hash matches. Include checklist for how to upgrade go.mod
+- Validate signatures in DHT records (?)
+- Require pubsub signatures
+- Figure out peer identity
