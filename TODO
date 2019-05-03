@@ -1,4 +1,6 @@
 - Hash go.mod, have CI check that the hash matches. Include checklist for how to upgrade go.mod
 - Validate signatures in DHT records (?)
-- Require pubsub signatures
+- Require pubsub signatures? 
+    Resolved: no, it's unsupported by go-libp2p
 - Figure out peer identity
+- Finish hooking in validation upcall

@@ -33,6 +33,7 @@ require (
 	github.com/libp2p/go-stream-muxer v0.0.1
 	github.com/libp2p/go-tcp-transport v0.0.2
 	github.com/libp2p/go-ws-transport v0.0.2
+	github.com/mr-tron/base58 v1.1.0
 	github.com/multiformats/go-multiaddr v0.0.2
 	github.com/multiformats/go-multiaddr-net v0.0.1
 	github.com/multiformats/go-multihash v0.0.1

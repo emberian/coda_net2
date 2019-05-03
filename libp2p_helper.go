@@ -61,8 +61,12 @@ func (cv customValidator) Select(key string, values [][]byte) (int, error) {
 	return cv.Base.Select(key, values)
 }
 
+func (*Helper) Handle(line string) {
+
+}
+
 // MakeHelper does all the initialization to run one host
-func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, genesisHash []byte) (*Helper, error) {
+func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, networkID string) (*Helper, error) {
 	dso := dsb.DefaultOptions
 
 	bp := path.Join(statedir, strconv.Itoa(os.Getpid()))
@@ -84,8 +88,7 @@ func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, genesis
 		return nil, err
 	}
 
-	// Derive the pnet security string from the genesis hash (genesis block + verification key checksums)
-	pnetKey := blake2b.Sum256(genesisHash)
+	pnetKey := blake2b.Sum256([]byte("/coda/0.0.1"))
 	prot, err := pnet.NewV1ProtectorFromBytes(&pnetKey)
 	if err != nil {
 		return nil, err
@@ -111,7 +114,6 @@ func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, genesis
 				go func() { kadch <- kad }()
 				return kad, err
 			})),
-		p2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0", "/ip6/::/tcp/0"),
 		p2p.PrivateNetwork(prot))
 
 	if err != nil {
@@ -132,7 +134,7 @@ func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, genesis
 	}
 	routingDiscovery := discovery.NewRoutingDiscovery(kad)
 
-	rendezvousString := fmt.Sprintf("/coda/0.0.1/%s", genesisHash)
+	rendezvousString := fmt.Sprintf("/coda/0.0.1/%s", networkID)
 	log.Println("Announcing ourselves for", rendezvousString)
 	discovery.Advertise(ctx, routingDiscovery, rendezvousString)
 

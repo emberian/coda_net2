@@ -62,6 +62,7 @@ B /home/cmr/.opam/4.07.1/lib/time_now
 B /home/cmr/.opam/4.07.1/lib/typerep
 B /home/cmr/.opam/4.07.1/lib/variantslib
 B /home/cmr/.opam/4.07.1/lib/yojson
+B ../_build/default/app/.test_client.eobjs/byte
 B ../_build/default/lib/.coda_net2.objs/byte
 S /home/cmr/.opam/4.07.1/lib/async
 S /home/cmr/.opam/4.07.1/lib/async_extra
@@ -127,5 +128,6 @@ S /home/cmr/.opam/4.07.1/lib/typerep
 S /home/cmr/.opam/4.07.1/lib/variantslib
 S /home/cmr/.opam/4.07.1/lib/yojson
 S .
-FLG -ppx '/home/cmr/proj/coda-net2/_build/default/.ppx/530343b12b84745e163d770fbeefce62/ppx.exe --as-ppx --cookie '\''library-name="coda_net2"'\'''
-FLG -open Coda_net2__ -w @a-4-29-40-41-42-44-45-48-58-59-60-40 -strict-sequence -strict-formats -short-paths -keep-locs
+S ../lib
+FLG -ppx '/home/cmr/proj/coda-net2/_build/default/.ppx/530343b12b84745e163d770fbeefce62/ppx.exe --as-ppx'
+FLG -w @a-4-29-40-41-42-44-45-48-58-59-60-40 -strict-sequence -strict-formats -short-paths -keep-locs

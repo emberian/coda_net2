@@ -3,6 +3,9 @@
 open Core
 open Async
 
+module Strict_pipe : module type of Strict_pipe
+module Envelope : module type of Envelope
+
 (** Handle to all network functionality. *)
 type t
 
@@ -27,8 +30,6 @@ module Multiaddr : sig
 end
 
 module Pubsub : sig
-  type topic
-
   (** A subscription to a pubsub topic. *)
   module Subscription : sig
     type t
@@ -36,7 +37,7 @@ module Pubsub : sig
     (** Publish a message to this pubsub topic.
     *
     * Returned deferred is resolved once the publish is enqueued. *)
-    val publish : t -> bytes -> unit Deferred.Or_error.t
+    val publish : t -> string -> unit Deferred.Or_error.t
 
     (** Unsubscribe from this topic, closing the write pipe.
     *
@@ -44,11 +45,10 @@ module Pubsub : sig
     val unsubscribe : t -> unit Deferred.Or_error.t
   end
 
-  (** Get the topic handle for a string.
-    *
-    * You can think of this as hashing the string.
-    *)
-  val topic_of_string : string -> topic Deferred.Or_error.t
+  (** Publish a message to a topic.
+  *
+  * Returned deferred is resolved once the publish is enqueued *)
+  val publish : t -> topic:string -> data:string -> unit Deferred.Or_error.t
 
   (** Subscribe to a pubsub topic.
     *
@@ -57,13 +57,13 @@ module Pubsub : sig
     *)
   val subscribe :
        t
-    -> topic
-    -> (bytes Envelope.Incoming.t, _, _) Strict_pipe.Writer.t
+    -> string
+    -> (string Envelope.Incoming.t, _  Strict_pipe.buffered, unit) Strict_pipe.Writer.t
     -> Subscription.t Deferred.Or_error.t
 
   (** Validate messages on a topic with [f] before forwarding them. *)
   val register_validator :
-    t -> topic -> f:(bytes Envelope.Incoming.t -> bool Deferred.t) -> unit
+    t -> string -> f:(string Envelope.Incoming.t -> bool Deferred.t) -> unit
 end
 
 (** Create a libp2p network manager.
@@ -72,6 +72,8 @@ end
 *)
 val create :
      me:Keypair.t
+  -> statedir:string
+  -> network_id:string
   -> rpcs:Host_and_port.t Rpc.Implementation.t list
   -> t Deferred.Or_error.t
 

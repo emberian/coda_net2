@@ -1,0 +1,4 @@
+(executable
+ (name test_client)
+ (preprocess (pps ppx_jane ppx_let))
+ (libraries coda_net2 core async))
