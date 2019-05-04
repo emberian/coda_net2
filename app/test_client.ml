@@ -6,16 +6,18 @@ open Coda_net2
 let main () =
     let open Deferred.Or_error.Let_syntax in
     let pid = Unix.getpid () |> Pid.to_int in
-    let%bind kp = Coda_net2.Keypair.random () in
-    let%bind net = Coda_net2.create ~me:kp ~rpcs:[] ~network_id:"test 0" ~statedir:(Format.sprintf "/tmp/libp2p-state/%d" pid) in 
-    let%bind ma = Coda_net2.listen_on net (Coda_net2.Multiaddr.of_string "/ip4/0.0.0.0/tcp/0") in
-    eprintf "Listening on %s\n%!" (Coda_net2.Multiaddr.to_string ma) ;
+    let logger = () in
+    let%bind net = Coda_net2.create logger () in
+    let%bind kp = Coda_net2.Keypair.random net in
+    let%bind () = Coda_net2.configure net ~me:kp ~rpcs:[] ~maddrs:[Coda_net2.Multiaddr.of_string "/ip4/127.0.0.1/tcp/0"] ~network_id:"test_0" ~statedir:(Format.sprintf "/tmp/libp2p-state/%d" pid) in 
+    let%bind ma = Coda_net2.listen_on net (Coda_net2.Multiaddr.of_string "/ip4/127.0.0.1/tcp/0") in
+    eprintf !"Listening on %{sexp: string list}\n%!" (List.map ~f:Coda_net2.Multiaddr.to_string ma) ;
     let (rd, wr) = Strict_pipe.create ~name:"test topic messages" 
         (Buffered 
             (`Capacity 30,
             `Overflow Drop_head)) 
         in
-    let%bind main_topic = Pubsub.topic_of_string net "test topic" in
+    let main_topic = "test topic" in
     let%bind sub = Pubsub.subscribe net main_topic wr in
     Strict_pipe.Reader.iter rd ~f:(fun bytes_env ->
         eprintf !"received `%s` from %{sexp:Envelope.Sender.t} on test topic%!\n" (Envelope.Incoming.data bytes_env) (Envelope.Incoming.sender bytes_env);

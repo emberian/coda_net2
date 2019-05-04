@@ -22,6 +22,7 @@ import (
 	mdns "github.com/libp2p/go-libp2p/p2p/discovery"
 	tcp "github.com/libp2p/go-tcp-transport"
 	ws "github.com/libp2p/go-ws-transport"
+	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/crypto/blake2b"
 	"log"
 	"os"
@@ -61,12 +62,8 @@ func (cv customValidator) Select(key string, values [][]byte) (int, error) {
 	return cv.Base.Select(key, values)
 }
 
-func (*Helper) Handle(line string) {
-
-}
-
 // MakeHelper does all the initialization to run one host
-func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, networkID string) (*Helper, error) {
+func MakeHelper(ctx context.Context, listenOn []multiaddr.Multiaddr, statedir string, pk crypto.PrivKey, networkID string) (*Helper, error) {
 	dso := dsb.DefaultOptions
 
 	bp := path.Join(statedir, strconv.Itoa(os.Getpid()))
@@ -108,6 +105,7 @@ func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, network
 		p2p.Identity(pk),
 		p2p.Peerstore(ps),
 		p2p.DisableRelay(),
+		p2p.ListenAddrs(listenOn...),
 		p2p.Routing(
 			p2pconfig.RoutingC(func(host host.Host) (routing.PeerRouting, error) {
 				kad, err := kad.New(ctx, host, kadopts.Datastore(dsDht), kadopts.Validator(rv))
@@ -120,7 +118,9 @@ func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, network
 		return nil, err
 	}
 
-	mdns, err := mdns.NewMdnsService(ctx, host, 15*time.Minute, "_coda-discovery._udp")
+	rendezvousString := fmt.Sprintf("/coda/0.0.1/%s", networkID)
+
+	mdns, err := mdns.NewMdnsService(ctx, host, time.Minute, "_coda-discovery._udp.local")
 	if err != nil {
 		return nil, err
 	}
@@ -134,15 +134,14 @@ func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, network
 	}
 	routingDiscovery := discovery.NewRoutingDiscovery(kad)
 
-	rendezvousString := fmt.Sprintf("/coda/0.0.1/%s", networkID)
 	log.Println("Announcing ourselves for", rendezvousString)
 	discovery.Advertise(ctx, routingDiscovery, rendezvousString)
 
 	// try and find some peers for this chain
-	dhtpeers, err := routingDiscovery.FindPeers(ctx, rendezvousString, discovery.Limit(16))
-	if err != nil {
-		return nil, err
-	}
+	//dhtpeers, err := routingDiscovery.FindPeers(ctx, rendezvousString, discovery.Limit(16))
+	//if err != nil {
+	//	return nil, err
+	//}
 
 	foundPeer := func(info peerstore.PeerInfo, source string) {
 		if info.ID != "" {
@@ -159,12 +158,8 @@ func MakeHelper(ctx context.Context, statedir string, pk crypto.PrivKey, network
 
 	go func() {
 		for {
-			select {
-			case info := <-l.FoundPeer:
-				foundPeer(info, "local")
-			case info := <-dhtpeers:
-				foundPeer(info, "dht")
-			}
+			info := <-l.FoundPeer
+			foundPeer(info, "local")
 		}
 	}()
 
