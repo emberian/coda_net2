@@ -16,6 +16,8 @@ var (
 		"unsubscribe":        unsubscribe,
 		"registerValidator":  registerValidator,
 		"validationComplete": validationComplete,
+		"closePipe":          closePipe,
+		"sendPipe":           sendPipe,
 	}
 
 	_methodIdxValueToName = map[methodIdx]string{
@@ -26,6 +28,8 @@ var (
 		unsubscribe:        "unsubscribe",
 		registerValidator:  "registerValidator",
 		validationComplete: "validationComplete",
+		closePipe:          "closePipe",
+		sendPipe:           "sendPipe",
 	}
 )
 
@@ -40,6 +44,8 @@ func init() {
 			interface{}(unsubscribe).(fmt.Stringer).String():        unsubscribe,
 			interface{}(registerValidator).(fmt.Stringer).String():  registerValidator,
 			interface{}(validationComplete).(fmt.Stringer).String(): validationComplete,
+			interface{}(closePipe).(fmt.Stringer).String():          closePipe,
+			interface{}(sendPipe).(fmt.Stringer).String():           sendPipe,
 		}
 	}
 }

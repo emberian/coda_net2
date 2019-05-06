@@ -42,7 +42,30 @@ module Helper = struct
         Hashtbl.t
     ; validators:
         (string, peerid:string -> data:string -> bool Deferred.t) Hashtbl.t
+    ; on_connection: (string -> string Pipe.Reader.t -> string Pipe.Writer.t -> unit)
+    ; incoming_rpcs: (int, string Pipe.Reader.t * string Pipe.Writer.t) Hashtbl.t
     ; mutable finished: bool }
+
+  let genseq t =
+    let v = !(t.seqno) in
+    incr t.seqno ; v
+
+  let do_rpc t name body =
+    if not t.finished then (
+      let res = Ivar.create () in
+      let seqno = genseq t in
+      Hashtbl.add_exn t.outstanding_requests ~key:seqno ~data:res ;
+      let actual_obj =
+        `Assoc
+          [ ("seqno", `Int seqno)
+          ; ("method", `String name)
+          ; ("body", `Assoc body) ]
+      in
+      let rpc = Yojson.Safe.to_string actual_obj in
+      Writer.write_line (Process.stdin t.subprocess) rpc ;
+      Core.eprintf "<:%s\n%!" rpc ;
+      Ivar.read res )
+    else Deferred.Or_error.error_string "helper process already exited"
 
   let handle_response t v =
     let open Yojson.Safe.Util in
@@ -99,13 +122,30 @@ module Helper = struct
               "asked to validate message for topic we haven't registered a \
                validator for %s"
               topic )
+    | "incoming_conn" -> (
+      let%bind peer = v |> member "remote_maddr" |> to_string_res in
+      let%bind seqno = v |> member "incoming_idx" |> to_int_res in
+      let (incoming_r, incoming_w) = Pipe.create () in
+      let (outgoing_r, outgoing_w) = Pipe.create () in
+      Hashtbl.add_exn t.incoming_rpcs ~key:seqno ~data:(incoming_r, outgoing_w) ;
+      t.on_connection peer incoming_r outgoing_w ;
+      Pipe.iter outgoing_r ~f:(fun s -> 
+        (match%map
+do_rpc t "replyIncoming" ["pipe_idx", `Int seqno ; "data", `String (to_b58_data s)] with
+  | Ok 
+        Deferred.unit
+      ) ;
+      Ok ()
+    )
+    | "writeIncoming"
+    | "writeOutgoing"
     | s ->
         Or_error.errorf "unknown upcall %s" s
 
   let create logger () =
     let open Deferred.Or_error.Let_syntax in
     let%map subprocess =
-      Process.create ~prog:"go" ~args:["run"; "libp2p_helper/main.go"] ()
+      Process.create ~prog:"go" ~args:["run"; "libp2p_helper/main.go"; "libp2p_helper/methodidx_jsonenum.go"] ()
     in
     let t =
       { subprocess
@@ -144,26 +184,6 @@ module Helper = struct
     |> don't_wait_for ;
     t
 
-  let genseq t =
-    let v = !(t.seqno) in
-    incr t.seqno ; v
-
-  let do_rpc t name body =
-    if not t.finished then (
-      let res = Ivar.create () in
-      let seqno = genseq t in
-      Hashtbl.add_exn t.outstanding_requests ~key:seqno ~data:res ;
-      let actual_obj =
-        `Assoc
-          [ ("seqno", `Int seqno)
-          ; ("method", `String name)
-          ; ("body", `Assoc body) ]
-      in
-      let rpc = Yojson.Safe.to_string actual_obj in
-      Writer.write_line (Process.stdin t.subprocess) rpc ;
-      Core.eprintf "<:%s\n%!" rpc ;
-      Ivar.read res )
-    else Deferred.Or_error.error_string "helper process already exited"
 end
 
 type net = {helper: Helper.t}
@@ -295,7 +315,7 @@ let create logger () =
   let%map helper = Helper.create logger () in
   {helper}
 
-let configure {helper} ~me ~maddrs ~statedir ~network_id ~rpcs =
+let configure {helper} ~me ~maddrs ~statedir ~network_id ~on_connection =
     match%map 
     Helper.do_rpc helper "configure"
       [ ("privk", `String (Keypair.safe_secret me))
