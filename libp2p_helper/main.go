@@ -6,6 +6,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/go-errors/errors"
 	logging "github.com/ipfs/go-log"
 	logwriter "github.com/ipfs/go-log/writer"
@@ -15,10 +21,6 @@ import (
 	b58 "github.com/mr-tron/base58/base58"
 	"github.com/multiformats/go-multiaddr"
 	logging2 "github.com/whyrusleeping/go-logging"
-	"log"
-	"os"
-	"sync"
-	"time"
 )
 
 type subscription struct {
@@ -87,6 +89,31 @@ type action interface {
 	run(app *app) (interface{}, error)
 }
 
+// TODO: wrap these in a new type, encode them differently in the rpc mainloop
+
+type wrappedError struct {
+	e   error
+	tag string
+}
+
+func (w wrappedError) Error() string {
+	return fmt.Sprintf("%s error: %s", w.tag, w.e.Error())
+}
+
+func wrapError(e error, tag string) error { return wrappedError{e: e, tag: tag} }
+
+func badRPC(e error) error {
+	return wrapError(e, "internal RPC error")
+}
+
+func badp2p(e error) error {
+	return wrapError(e, "libp2p error")
+}
+
+func badHelper(e error) error {
+	return wrapError(e, "initializing helper")
+}
+
 type configureMsg struct {
 	Statedir  string   `json:"statedir"`
 	Privk     string   `json:"privk"`
@@ -97,23 +124,23 @@ type configureMsg struct {
 func (m *configureMsg) run(app *app) (interface{}, error) {
 	privkBytes, err := b58.Decode(m.Privk)
 	if err != nil {
-		return nil, err
+		return nil, badRPC(err)
 	}
 	privk, err := crypto.UnmarshalPrivateKey(privkBytes)
 	if err != nil {
-		return nil, err
+		return nil, badRPC(err)
 	}
 	maddrs := make([]multiaddr.Multiaddr, len(m.ListenOn))
 	for i, v := range m.ListenOn {
 		res, err := multiaddr.NewMultiaddr(v)
 		if err != nil {
-			return nil, err
+			return nil, badp2p(err)
 		}
 		maddrs[i] = res
 	}
 	helper, err := codanet.MakeHelper(app.Ctx, maddrs, m.Statedir, privk, m.NetworkID)
 	if err != nil {
-		return nil, err
+		return nil, badHelper(err)
 	}
 	app.P2p = helper
 
@@ -127,10 +154,10 @@ type listenMsg struct {
 func (m *listenMsg) run(app *app) (interface{}, error) {
 	ma, err := multiaddr.NewMultiaddr(m.Iface)
 	if err != nil {
-		return nil, err
+		return nil, badp2p(err)
 	}
 	if err := app.P2p.Host.Network().Listen(ma); err != nil {
-		return nil, err
+		return nil, badp2p(err)
 	}
 	return app.P2p.Host.Addrs(), nil
 }
@@ -143,10 +170,10 @@ type publishMsg struct {
 func (t *publishMsg) run(app *app) (interface{}, error) {
 	data, err := b58.Decode(t.Data)
 	if err != nil {
-		return nil, err
+		return nil, badRPC(err)
 	}
 	if err := app.P2p.Pubsub.Publish(t.Topic, data); err != nil {
-		return nil, err
+		return nil, badp2p(err)
 	}
 	return "publish success", nil
 }
@@ -165,7 +192,7 @@ type publishUpcall struct {
 func (s *subscribeMsg) run(app *app) (interface{}, error) {
 	sub, err := app.P2p.Pubsub.Subscribe(s.Topic)
 	if err != nil {
-		return nil, err
+		return nil, badp2p(err)
 	}
 	ctx, cancel := context.WithCancel(app.Ctx)
 	app.Subs[s.Subscription] = subscription{
@@ -206,7 +233,7 @@ func (u *unsubscribeMsg) run(app *app) (interface{}, error) {
 		sub.Cancel()
 		return "unsubscribe success", nil
 	}
-	return nil, errors.New("subscription not found")
+	return nil, badRPC(errors.New("subscription not found"))
 }
 
 type registerValidatorMsg struct {
@@ -272,11 +299,16 @@ func (r *registerValidatorMsg) run(app *app) (interface{}, error) {
 			Topic:  r.Topic,
 		})
 
-		return <-ch
+		select {
+		case <-ctx.Done():
+			return false
+		case res := <-ch:
+			return res
+		}
 	}, pubsub.WithValidatorConcurrency(1), pubsub.WithValidatorTimeout(5*time.Second))
 
 	if err != nil {
-		return nil, err
+		return nil, badp2p(err)
 	}
 	return "register validator success", nil
 }
@@ -287,7 +319,7 @@ func (r *validationCompleteMsg) run(app *app) (interface{}, error) {
 		delete(app.Validators, r.Seqno)
 		return "validation completed", nil
 	}
-	return nil, errors.New("validation seqno unknown")
+	return nil, badRPC(errors.New("validation seqno unknown"))
 }
 
 type generateKeypairMsg struct {
@@ -301,16 +333,16 @@ type generatedKeypair struct {
 func (*generateKeypairMsg) run(app *app) (interface{}, error) {
 	privk, pubk, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
-		return nil, err
+		return nil, badp2p(err)
 	}
 	privkBytes, err := crypto.MarshalPrivateKey(privk)
 	if err != nil {
-		return nil, err
+		return nil, badRPC(err)
 	}
 
 	pubkBytes, err := crypto.MarshalPublicKey(pubk)
 	if err != nil {
-		return nil, err
+		return nil, badRPC(err)
 	}
 
 	return generatedKeypair{Private: b58.Encode(privkBytes), Public: b58.Encode(pubkBytes)}, nil
@@ -360,6 +392,7 @@ func main() {
 		Out:  out,
 	}
 
+	// rpc mainloop
 	for lines.Scan() {
 		line := lines.Text()
 		go func() {
@@ -388,7 +421,8 @@ func main() {
 			}
 		}()
 	}
-	log.Fatal("stdin eof, I guess we are done: ", lines.Err())
+	log.Print("stdin eof, I guess we are done: ", lines.Err())
+	os.Exit(0)
 }
 
 var _ json.Marshaler = (*methodIdx)(nil)

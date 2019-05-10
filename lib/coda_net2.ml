@@ -95,8 +95,12 @@ module Helper = struct
         let%bind data = v |> member "data" |> of_b58_data in
         match Hashtbl.find t.subscriptions idx with
         | Some sub ->
+          if not sub.closed then (
             Strict_pipe.Writer.write sub
-              (Envelope.Incoming.wrap ~data ~sender:Envelope.Sender.Local) ; 
+              (Envelope.Incoming.wrap ~data ~sender:Envelope.Sender.Local) ;
+ ) else 
+            Core.eprintf "!:received msg about %d after unsubscribe, was it still in the stdout pipe?\n%!"
+            idx ;
             Ok ()
         | None -> 
 
@@ -239,6 +243,7 @@ module Pubsub = struct
       { net: net
       ; topic: topic
       ; idx: int
+      ; mutable closed: bool
       ; pipe:
           ( string Envelope.Incoming.t
           , Strict_pipe.crash Strict_pipe.buffered
@@ -248,7 +253,9 @@ module Pubsub = struct
     let publish {net; topic; idx= _; pipe= _} message =
       publish net ~topic ~data:message
 
-    let unsubscribe {net; idx; pipe; topic= _} =
+    let unsubscribe ({net; idx; pipe; topic= _} as t) =
+      if not t.closed then(
+      t.closed <- true ;
       Strict_pipe.Writer.close pipe ;
       match%map
         Helper.do_rpc net.helper "unsubscribe" [("subscription_idx", `Int idx)]
@@ -259,7 +266,7 @@ module Pubsub = struct
           Or_error.errorf "daemon broke RPC protocol: unsubscribe got %s"
             (Yojson.Safe.to_string v)
       | Error e ->
-          Error e
+          Error e) else Deferred.Or_error.error_string "already unsubscribed"
   end
 
   let subscribe (type a) (net : net) (topic : string)
